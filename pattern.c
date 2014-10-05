@@ -21,10 +21,11 @@ extern int caseless;
  * Compile a search pattern, for future use by match_pattern.
  */
 	static int
-compile_pattern2(pattern, search_type, comp_pattern)
+compile_pattern2(pattern, search_type, comp_pattern, iscaseless)
 	char *pattern;
 	int search_type;
 	void **comp_pattern;
+	int iscaseless;
 {
 	if (search_type & SRCH_NO_REGEX)
 		return (0);
@@ -35,6 +36,8 @@ compile_pattern2(pattern, search_type, comp_pattern)
 	struct re_pattern_buffer **pcomp = 
 		(struct re_pattern_buffer **) comp_pattern;
 	re_set_syntax(RE_SYNTAX_POSIX_EXTENDED);
+	if (iscaseless)
+		re_set_syntax(RE_ICASE);
 	if (re_compile_pattern(pattern, strlen(pattern), comp))
 	{
 		free(comp);
@@ -48,7 +51,10 @@ compile_pattern2(pattern, search_type, comp_pattern)
 #if HAVE_POSIX_REGCOMP
 	regex_t *comp = (regex_t *) ecalloc(1, sizeof(regex_t));
 	regex_t **pcomp = (regex_t **) comp_pattern;
-	if (regcomp(comp, pattern, REGCOMP_FLAG))
+	int eflag = REGCOMP_FLAG;
+	if (iscaseless)
+		eflag |= REG_ICASE;
+	if (regcomp(comp, pattern, eflag))
 	{
 		free(comp);
 		error("Invalid pattern", NULL_PARG);
@@ -64,7 +70,10 @@ compile_pattern2(pattern, search_type, comp_pattern)
 	constant char *errstring;
 	int erroffset;
 	PARG parg;
-	comp = pcre_compile(pattern, 0,
+	int eflag = 0;
+	if (iscaseless)
+		eflag |= PCRE_CASELESS;
+	comp = pcre_compile(pattern, eflag,
 			&errstring, &erroffset, NULL);
 	if (comp == NULL)
 	{
@@ -124,17 +133,18 @@ compile_pattern(pattern, search_type, comp_pattern)
 	int search_type;
 	void **comp_pattern;
 {
-	char *cvt_pattern;
+	char *cvt_pattern = pattern;
 	int result;
+	int iscaseless = caseless == OPT_ONPLUS;
 
-	if (caseless != OPT_ONPLUS)
-		cvt_pattern = pattern;
-	else
+#if defined(HAVE_V8_REGCOMP) || defined(HAVE_REGCMP)
+	if (iscaseless)
 	{
 		cvt_pattern = (char*) ecalloc(1, cvt_length(strlen(pattern), CVT_TO_LC));
 		cvt_text(cvt_pattern, pattern, (int *)NULL, (int *)NULL, CVT_TO_LC);
 	}
-	result = compile_pattern2(cvt_pattern, search_type, comp_pattern);
+#endif
+	result = compile_pattern2(cvt_pattern, search_type, comp_pattern, iscaseless);
 	if (cvt_pattern != pattern)
 		free(cvt_pattern);
 	return (result);
@@ -293,7 +303,6 @@ match_pattern(pattern, tpattern, line, line_len, sp, ep, notbol, search_type, is
 		spattern->not_bol = notbol;
 		if (iscaseless)
 			re_set_syntax(RE_ICASE);
-		re_set_syntax(
 		re_set_registers(spattern, &search_regs, 1, starts, ends);
 		matched = re_search(spattern, line, line_len, 0, line_len, &search_regs) >= 0;
 		if (matched)

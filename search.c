@@ -727,10 +727,12 @@ search_pos(search_type)
 	return (pos);
 }
 
-#ifdef HAVE_STRCASESTR
-#define NO_STRCASESTR 0
+/* Any search option that does not support case insensitive search? */
+#if !(defined HAVE_STRCASESTR) || \
+	!(defined HAVE_PCRE || defined HAVE_GNU_REGEX || defined HAVE_POSIX_REGCOMP)
+#define NEED_LOWER_CASE 1
 #else
-#define NO_STRCASESTR 1
+#define NEED_LOWER_CASE 0
 #endif
 
 /*
@@ -841,7 +843,7 @@ search_range(pos, endpos, search_type, matches, maxlines, plinepos, pendpos)
 		 * Only for backspace conversion do we need to convert before
 		 * search. Otherwise only do it when something is found.
 		 */
-		if (((cvt_ops & CVT_BS) && strchr(line, '\b')) || NO_STRCASESTR)
+		if (((cvt_ops & CVT_BS) && strchr(line, '\b')) || NEED_LOWER_CASE)
 		{
 			cvt_len = cvt_length(line_len, cvt_ops);
 			cline = (char *) ecalloc(1, cvt_len);
